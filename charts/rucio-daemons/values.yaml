@@ -6,6 +6,7 @@
 abacusAccountCount: 0
 abacusCollectionReplicaCount: 0
 abacusRseCount: 0
+auditorCount: 0
 automatixCount: 0
 cacheConsumerCount: 0
 conveyorTransferSubmitterCount: 0
@@ -109,6 +110,19 @@ abacusRse:
     requests:
       memory: "200Mi"
       cpu: "700m"
+
+auditor:
+  fillHistoryTable: 0
+  threads: 1
+  podAnnotations: {}
+  resources:
+    limits:
+      memory: "200Mi"
+      cpu: "700m"
+    requests:
+      memory: "200Mi"
+      cpu: "700m"
+
 
 automatix:
   threads: 1
