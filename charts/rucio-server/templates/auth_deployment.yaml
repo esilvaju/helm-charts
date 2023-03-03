@@ -54,16 +54,19 @@ spec:
           secretName: {{ template "rucio.fullname" . }}-auth.config.yaml
       - name: httpdlog
         emptyDir: {}
-      {{- range $key, $val := .Values.additionalSecrets }}
-      - name: {{ kindIs "int" $key | ternary (coalesce $val.volumeName $val.secretName $val.secretFullName) $key }} 
+      {{- range $collection := tuple (coalesce .Values.secretMounts .Values.additionalSecrets)}}
+      {{- range $key, $val := $collection }}
+      - name: {{ kindIs "int" $key | ternary (coalesce $val.volumeName $val.secretName $val.secretFullName) $key }}
         secret:
           secretName: {{ coalesce $val.secretFullName (printf "%s-%s" $.Release.Name $val.secretName) }}
+      {{- end}}
       {{- end}}
       {{- range $key, $val := .Values.persistentVolumes }}
       - name: {{ $key }}
         persistentVolumeClaim:
           claimName: {{ $val.name }}
       {{- end}}
+{{- if .Values.useDeprecatedImplicitSecrets }}
 {{- if .Values.useSSL.authServer }}
       - name: hostcert
         secret:
@@ -74,6 +77,7 @@ spec:
       - name: cafile
         secret:
           secretName: {{ .Release.Name }}-auth-cafile
+{{- end }}
 {{- end }}
       containers:
 {{- if .Values.exposeErrorLogs.authServer }}
@@ -116,6 +120,18 @@ spec:
               containerPort: {{ .Values.monitoring.nativeMetricsPort }}
               protocol: TCP
 {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+{{- if .Values.useSSL.server }}
+              scheme: HTTPS
+              port: 443
+{{- else }}
+              port: 80
+{{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.authServer.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.authServer.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.authServer.timeoutSeconds }}
           livenessProbe:
             httpGet:
               path: /ping
@@ -134,7 +150,8 @@ spec:
               subPath: common.json
             - name: httpdlog
               mountPath: /var/log/httpd
-            {{- range $key, $val := .Values.additionalSecrets }}
+            {{- range $collection := tuple (coalesce .Values.secretMounts .Values.additionalSecrets)}}
+            {{- range $key, $val := $collection }}
             {{- /* TODO: depreacte and remove support for subPaths (at plural) case */}}
             {{-  if $val.subPaths }}
             {{-   range $val.subPaths }}
@@ -148,10 +165,12 @@ spec:
               subPath: {{ $val.subPath }}
             {{-  end}}
             {{- end}}
+            {{- end}}
             {{- range $key, $val := .Values.persistentVolumes }}
             - name: {{ $key }}
               mountPath: {{ $val.mountPath }}
             {{- end}}
+{{- if .Values.useDeprecatedImplicitSecrets }}
 {{- if .Values.useSSL.authServer }}
             - name: hostcert
               mountPath: /etc/grid-security/hostcert.pem
@@ -162,6 +181,7 @@ spec:
             - name: cafile
               mountPath: /etc/grid-security/ca.pem
               subPath: ca.pem
+{{- end }}
 {{- end }}
           env:
             {{- range $key, $val := .Values.httpd_config }}

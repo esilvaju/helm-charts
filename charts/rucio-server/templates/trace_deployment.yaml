@@ -54,11 +54,14 @@ spec:
           secretName: {{ template "rucio.fullname" . }}-trace.config.yaml
       - name: httpdlog
         emptyDir: {}
-      {{- range $key, $val := .Values.additionalSecrets }}
-      - name: {{ kindIs "int" $key | ternary (coalesce $val.volumeName $val.secretName $val.secretFullName) $key }} 
+      {{- range $collection := tuple (coalesce .Values.secretMounts .Values.additionalSecrets)}}
+      {{- range $key, $val := $collection }}
+      - name: {{ kindIs "int" $key | ternary (coalesce $val.volumeName $val.secretName $val.secretFullName) $key }}
         secret:
           secretName: {{ coalesce $val.secretFullName (printf "%s-%s" $.Release.Name $val.secretName) }}
       {{- end}}
+      {{- end}}
+{{- if .Values.useDeprecatedImplicitSecrets }}
 {{- if .Values.useSSL.traceServer }}
       - name: hostcert
         secret:
@@ -69,6 +72,7 @@ spec:
       - name: cafile
         secret:
           secretName: {{ .Release.Name }}-trace-cafile
+{{- end }}
 {{- end }}
       containers:
 {{- if .Values.exposeErrorLogs.traceServer }}
@@ -109,6 +113,18 @@ spec:
               containerPort: {{ .Values.monitoring.nativeMetricsPort }}
               protocol: TCP
 {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+{{- if .Values.useSSL.server }}
+              scheme: HTTPS
+              port: 443
+{{- else }}
+              port: 80
+{{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.traceServer.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.traceServer.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.traceServer.timeoutSeconds }}
           livenessProbe:
             httpGet:
               path: /ping
@@ -127,6 +143,7 @@ spec:
               subPath: common.json
             - name: httpdlog
               mountPath: /var/log/httpd
+{{- if .Values.useDeprecatedImplicitSecrets }}
 {{- if .Values.useSSL.traceServer }}
             - name: hostcert
               mountPath: /etc/grid-security/hostcert.pem
@@ -138,7 +155,9 @@ spec:
               mountPath: /etc/grid-security/ca.pem
               subPath: ca.pem
 {{- end }}
-            {{- range $key, $val := .Values.additionalSecrets }}
+{{- end }}
+            {{- range $collection := tuple (coalesce .Values.secretMounts .Values.additionalSecrets)}}
+            {{- range $key, $val := $collection }}
             {{- /* TODO: depreacte and remove support for subPaths (at plural) case */}}
             {{-  if $val.subPaths }}
             {{-   range $val.subPaths }}
@@ -151,6 +170,7 @@ spec:
               mountPath: {{ $val.mountPath }}
               subPath: {{ $val.subPath }}
             {{-  end}}
+            {{- end}}
             {{- end}}
           env:
             {{- range $key, $val := .Values.httpd_config }}
